@@ -1,6 +1,6 @@
 # MatchaBuiltInGui
 
-The Rivals Skin Changer as a tab in Matcha's own menu. It edits `rivals_config.lua` and runs the changer, with the same options as the site and the drawn GUI: skins, skin swaps, wraps, finishers, charms, sky and lighting, tracers, sounds and spoof.
+The Rivals Skin Changer as a tab in Matcha's own menu. It edits `rivals_config.lua` and runs the changer, with the same options as the site and the drawn GUI: skins, skin swaps, wraps, finishers, charms, sky and lighting, tracers, no hands, sounds and spoof.
 
 ## Run it
 
@@ -13,8 +13,8 @@ Then open the **Rivals Changer** tab in Matcha's menu. To load it on every join,
 ## How it's laid out
 
 - **Changer**: Save & Apply, the status, and "Apply by itself on join".
-- **Items** (left): pick Skins, Swaps, Wraps, Finishers or Charms under *Show*. Each list goes one step at a time: first the weapon or item you own, then what it should look like. `*` marks one you've set; `>` marks the current pick.
-- **Extras** (right): Sky and lighting, Tracers (colour per gun, rainbow, speed), Sounds (with a preview), and Spoof.
+- **Items** (left): pick Skins, Swaps, Wraps, Finishers or Charms under *Show*. Each list goes one step at a time: first the weapon or item you own, then what it should look like. `*` marks one you've set; `>` marks the current pick. The "you own" lists show only what you own (switchable in Changer).
+- **Extras** (right): Sky and lighting, Sounds (with a preview), and Misc, which holds Tracers (colour per gun with a colour picker, rainbow, a speed slider, optional Energy Pistols tracers), Hands (hide your first-person arms per weapon) and Spoof (name, stats, badges, name effect).
 
 Matcha's dropdowns can't scroll, so the long lists are buttons in scrollable sections, with a search box on each list.
 

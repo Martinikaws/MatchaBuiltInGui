@@ -33,9 +33,9 @@ local function numbered(prefix, from, to)
     for n = from, to do out[#out + 1] = string.format("%s %02d", prefix, n) end
     return out
 end
--- Community skies are off: their images are private uploads that Rivals
--- isn't allowed to load, and since Roblox build cec3ad5 (Oct 2026) that
--- crashes the game. Only skies with public images (the game's own) remain.
+-- Only the game's own skies: since Roblox build cec3ad5 (Oct 2026) the
+-- uploaded skies crash the game on the next map load, so the changer turns
+-- down any sky image the game's own skies don't use (Force=yes overrides).
 local SKIES = {"blue", "space", "graveyard", "sudden death", "station", "westown", "black", "gray", "classic"}
 -- Sound library. Rivals and Roblox sounds always play; community uploads
 -- are public but their owners can remove them.
@@ -558,8 +558,8 @@ end
 -- Whether the "you own" lists are cut down to what you own.
 local function ownedOnly() return state.ownedOnly and inventory ~= nil end
 
--- Item lists: the site's (weapons and their skins, wraps, finishers, charms,
--- uploaded skies) plus anything the running game has that the site lacks.
+-- Item lists: the site's (weapons and their skins, wraps, finishers, charms)
+-- plus anything the running game has that the site lacks.
 
 local function fetch(url)
     local body = (type(httpget) == "function") and httpget(url) or game:HttpGet(url)

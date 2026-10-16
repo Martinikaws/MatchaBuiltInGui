@@ -33,7 +33,7 @@ local function numbered(prefix, from, to)
     for n = from, to do out[#out + 1] = string.format("%s %02d", prefix, n) end
     return out
 end
-local SKIES = {"blue", "space", "graveyard", "sudden death", "station", "westown", "black", "gray", "classic",
+local SKIES = {"blue", "space", "graveyard", "sudden death", "station", "westown", "black", "gray",
     "galaxy", "blue nebula", "gold nebula"}
 for _, s in ipairs(numbered("cloudy", 1, 25)) do SKIES[#SKIES + 1] = s end
 for _, s in ipairs({"aurora", "beautiful", "black hole", "blue sky", "broken sky", "castle grounds", "chill gray",

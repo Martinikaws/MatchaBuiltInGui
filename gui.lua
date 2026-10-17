@@ -1291,6 +1291,60 @@ local function healthBarPage(sec)
     sec:Text("Shows from the next Save & Apply.")
 end
 
+-- Buttons: the menu's coloured buttons, saved as the [Buttons] section.
+-- Each style takes one colour, two (a gradient), sky or rainbow.
+local BTN_STYLES = {{"Green", "Green buttons (Play, prices)"}, {"Blue", "Blue buttons (View)"},
+    {"Yellow", "Yellow buttons (Buy, Free)"}, {"Gold", "Gold buttons (party leader)"}}
+local function buttonsPage(sec)
+    local v = values("buttons")
+    sec:Text("Menu button colours (only you see them). Shows from the next Save & Apply.")
+    local function colourList(withExtras)
+        local opts = {}
+        if withExtras then
+            opts[#opts + 1] = {"Game's own", nil}
+            opts[#opts + 1] = {"Match sky", "sky"}
+            opts[#opts + 1] = {"Rainbow", "rainbow"}
+        else
+            opts[#opts + 1] = {"None (one colour)", nil}
+        end
+        for _, c in ipairs(TRACER_COLORS) do opts[#opts + 1] = {c[1] .. "  (" .. c[2] .. ")", c[2]} end
+        return opts
+    end
+    for _, st in ipairs(BTN_STYLES) do
+        local key = st[1]
+        local raw = tostring(v[key] or ""):lower()
+        local c1, c2 = raw:match("^(%x%x%x%x%x%x)>(%x%x%x%x%x%x)$")
+        if not c1 and raw:match("^%x%x%x%x%x%x$") then c1 = raw end
+        local first = (raw == "sky" or raw == "rainbow") and raw or c1
+        local function save(a, b)
+            if a == "sky" or a == "rainbow" or not a then setMapping("buttons", key, a)
+            else setMapping("buttons", key, b and (a .. ">" .. b) or a) end
+        end
+        local function choice(id, text, now, opts, onPick)
+            local index = 0
+            for i, o in ipairs(opts) do if o[2] == now then index = i - 1 end end
+            if now and index == 0 then opts[#opts + 1] = {now .. "  (your own)", now}; index = #opts - 1 end
+            local list = {}
+            for i, o in ipairs(opts) do list[i] = o[1] end
+            combo(sec, id, text, list, index, function(i) local o = opts[i]; if o then onPick(o[2]) end end)
+        end
+        choice("btn" .. key, st[2], first, colourList(true), function(val) save(val, c2) end)
+        if c1 then
+            choice("btn" .. key .. "2", "   gradient to", c2, colourList(false), function(val) save(c1, val) end)
+        end
+    end
+    sec:Spacing()
+    sec:InputText("mbg.btnHex", "Any colour (hex, like ff66cc)", state.typed.btnHex or "", function(text)
+        if type(text) == "string" then state.typed.btnHex = text end
+    end)
+    for _, st in ipairs(BTN_STYLES) do
+        button(sec, "Use for " .. st[1]:lower() .. " buttons", function()
+            local hex = trim(state.typed.btnHex or ""):gsub("^#", ""):lower()
+            if hex:match("^%x%x%x%x%x%x$") then setMapping("buttons", st[1], hex) else state.status = "Colours are 6 hex digits, like ff66cc." end
+        end)
+    end
+end
+
 -- Hands: your first-person arms, hidden on every weapon or one at a time.
 local function handsPage(sec)
     local allOn = tostring(values("nohands").All or ""):lower() == "true"
@@ -1491,10 +1545,10 @@ drawTab = function(tab)
     if extra == 1 then skyPage(extras)
     elseif extra == 2 then
         -- Misc holds the smaller features, picked with a second dropdown.
-        combo(extras, "miscView", "Misc", {"Tracers", "Hands", "Spoof", "Health bar"}, (state.miscView or 1) - 1, function(i) state.miscView = i end)
+        combo(extras, "miscView", "Misc", {"Tracers", "Hands", "Spoof", "Health bar", "Buttons"}, (state.miscView or 1) - 1, function(i) state.miscView = i end)
         local misc = state.miscView or 1
         if misc == 1 then tracersPage(extras) elseif misc == 2 then handsPage(extras)
-        elseif misc == 3 then spoofPage(extras) else healthBarPage(extras) end
+        elseif misc == 3 then spoofPage(extras) elseif misc == 4 then healthBarPage(extras) else buttonsPage(extras) end
     else soundsPage(extras) end
 
     local about = tab:Section("About", "Right")

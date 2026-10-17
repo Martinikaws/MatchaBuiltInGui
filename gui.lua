@@ -1190,6 +1190,100 @@ local function tracersPage(sec)
     end)
 end
 
+-- Health bar: your own bar in the bottom HUD, saved as the [HealthBar]
+-- section. Only you see it; the game draws it, so it doesn't lag.
+local HP_STYLES = {{"Game's own", nil}, {"Color", "Color"}, {"Rainbow", "Rainbow"},
+    {"Gradient (scrolling)", "Gradient"}, {"By health (full / half / low)", "Health"}}
+local function healthBarPage(sec)
+    local v = values("healthbar")
+    local cur = tostring(v.Style or ""):lower()
+    if cur == "cycle" then cur = "gradient" end
+    local si = 1
+    for i, s in ipairs(HP_STYLES) do if s[2] and s[2]:lower() == cur then si = i end end
+    local names = {}
+    for i, s in ipairs(HP_STYLES) do names[i] = s[1] end
+    combo(sec, "hpStyle", "Health bar style (only you see it)", names, si - 1, function(i)
+        local s = HP_STYLES[i]
+        if s then setMapping("healthbar", "Style", s[2]) end
+    end)
+    local style = HP_STYLES[si][2]
+    if not style then
+        sec:Text("The game's green-to-red bar. Pick a style to change it.")
+        return
+    end
+
+    -- One colour as a dropdown of the tracer colours, plus any hex set elsewhere.
+    local function colorChoice(key, text, default, withRainbow)
+        local raw = tostring(v[key] or ""):lower()
+        local now = hexOf(raw) or (withRainbow and raw == "rainbow" and "rainbow") or nil
+        local opts = {{"Default (" .. default .. ")", nil}}
+        if withRainbow then opts[#opts + 1] = {"Rainbow (whole spectrum)", "rainbow"} end
+        for _, c in ipairs(TRACER_COLORS) do opts[#opts + 1] = {c[1] .. "  (" .. c[2] .. ")", c[2]} end
+        local index = 0
+        for i, o in ipairs(opts) do if o[2] == now then index = i - 1 end end
+        if now and index == 0 then opts[#opts + 1] = {now .. "  (your own)", now}; index = #opts - 1 end
+        local list = {}
+        for i, o in ipairs(opts) do list[i] = o[1] end
+        combo(sec, "hp" .. key, text, list, index, function(i)
+            local o = opts[i]
+            if o then setMapping("healthbar", key, o[2]) end
+        end)
+    end
+    local keys
+    if style == "Color" then
+        colorChoice("Color", "Colour", "9933ff")
+        keys = {{"Color", "Use as colour"}}
+    elseif style == "Gradient" then
+        colorChoice("Color1", "Colour 1", "ff2bd6", true)
+        if tostring(v.Color1 or ""):lower() ~= "rainbow" then colorChoice("Color2", "Colour 2", "3b5bff") end
+        keys = {{"Color1", "Use as colour 1"}, {"Color2", "Use as colour 2"}}
+    elseif style == "Health" then
+        colorChoice("Full", "Full health", "64ff32")
+        colorChoice("Mid", "Half health", "ffd700")
+        colorChoice("Low", "Low health", "ff3232")
+        keys = {{"Full", "Use for full"}, {"Mid", "Use for half"}, {"Low", "Use for low"}}
+    end
+
+    -- Speed for Rainbow and Gradient; 0 holds a gradient still.
+    if style == "Rainbow" or style == "Gradient" then
+        local speed = math.max(0, math.min(300, tonumber(v.Speed) or 100))
+        if has(sec, "SliderInt") then
+            local id = "mbg.hpSpeedPct"
+            follow(id, speed)
+            sec:SliderInt(id, "Speed %", 0, 300, speed, function(n)
+                local s = math.floor((tonumber(n) or 100) / 10 + 0.5) * 10
+                if s ~= (tonumber(values("healthbar").Speed) or 100) then
+                    setMapping("healthbar", "Speed", s ~= 100 and tostring(s) or nil)
+                end
+            end)
+        else
+            local speeds = {{"Normal (100%)", nil}, {"Still (0%)", "0"}, {"Slow (50%)", "50"}, {"Fast (200%)", "200"}}
+            local index = 0
+            for i, s in ipairs(speeds) do if s[2] == v.Speed then index = i - 1 end end
+            local list = {}
+            for i, s in ipairs(speeds) do list[i] = s[1] end
+            combo(sec, "hpSpeed", "Speed", list, index, function(i)
+                local s = speeds[i]
+                if s then setMapping("healthbar", "Speed", s[2]) end
+            end)
+        end
+    end
+
+    if keys then
+        sec:Spacing()
+        sec:InputText("mbg.hpHex", "Any colour (hex, like ff66cc)", state.typed.hpHex or "", function(text)
+            if type(text) == "string" then state.typed.hpHex = text end
+        end)
+        for _, k in ipairs(keys) do
+            button(sec, k[2], function()
+                local hex = trim(state.typed.hpHex or ""):gsub("^#", ""):lower()
+                if hex:match("^%x%x%x%x%x%x$") then setMapping("healthbar", k[1], hex) else state.status = "Colours are 6 hex digits, like ff66cc." end
+            end)
+        end
+    end
+    sec:Text("Shows from the next Save & Apply.")
+end
+
 -- Hands: your first-person arms, hidden on every weapon or one at a time.
 local function handsPage(sec)
     local allOn = tostring(values("nohands").All or ""):lower() == "true"
@@ -1390,9 +1484,10 @@ drawTab = function(tab)
     if extra == 1 then skyPage(extras)
     elseif extra == 2 then
         -- Misc holds the smaller features, picked with a second dropdown.
-        combo(extras, "miscView", "Misc", {"Tracers", "Hands", "Spoof"}, (state.miscView or 1) - 1, function(i) state.miscView = i end)
+        combo(extras, "miscView", "Misc", {"Tracers", "Hands", "Spoof", "Health bar"}, (state.miscView or 1) - 1, function(i) state.miscView = i end)
         local misc = state.miscView or 1
-        if misc == 1 then tracersPage(extras) elseif misc == 2 then handsPage(extras) else spoofPage(extras) end
+        if misc == 1 then tracersPage(extras) elseif misc == 2 then handsPage(extras)
+        elseif misc == 3 then spoofPage(extras) else healthBarPage(extras) end
     else soundsPage(extras) end
 
     local about = tab:Section("About", "Right")

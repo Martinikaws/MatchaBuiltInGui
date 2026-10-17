@@ -1176,6 +1176,8 @@ local function tracersPage(sec)
     sec:Text((target == "Color" and "Every gun" or target) .. "  -  now: " .. (now or (target == "Color" and "the game's own" or "same as all guns")))
     button(sec, mark(now == nil) .. (target == "Color" and "The game's own" or "Same as all guns"), function() setMapping("tracers", target, nil) end)
     button(sec, mark(now == "rainbow") .. "Rainbow", function() setMapping("tracers", target, "rainbow") end)
+    button(sec, mark(now == "sky") .. "Match sky (your sky preset's colour)", function() setMapping("tracers", target, "sky") end)
+    button(sec, mark(now == "wrap") .. "Match wrap (the colour of the weapon in your hands)", function() setMapping("tracers", target, "wrap") end)
     if has(sec, "Toggle") and has(sec, "ColorPicker") then tracerPicker(sec, target, hexOf(now)) end
     for _, c in ipairs(TRACER_COLORS) do
         button(sec, mark(now == c[2]) .. c[1] .. "  (" .. c[2] .. ")", function() setMapping("tracers", target, c[2]) end)
@@ -1193,7 +1195,8 @@ end
 -- Health bar: your own bar in the bottom HUD, saved as the [HealthBar]
 -- section. Only you see it; the game draws it, so it doesn't lag.
 local HP_STYLES = {{"Game's own", nil}, {"Color", "Color"}, {"Rainbow", "Rainbow"},
-    {"Gradient (scrolling)", "Gradient"}, {"By health (full / half / low)", "Health"}}
+    {"Gradient (scrolling)", "Gradient"}, {"By health (full / half / low)", "Health"},
+    {"Match sky (your sky preset's colours)", "Sky"}}
 local function healthBarPage(sec)
     local v = values("healthbar")
     local cur = tostring(v.Style or ""):lower()
@@ -1244,8 +1247,12 @@ local function healthBarPage(sec)
         keys = {{"Full", "Use for full"}, {"Mid", "Use for half"}, {"Low", "Use for low"}}
     end
 
-    -- Speed for Rainbow and Gradient; 0 holds a gradient still.
-    if style == "Rainbow" or style == "Gradient" then
+    if style == "Sky" then
+        local sky = values("skybox").Preset
+        sec:Text(sky and ("Colours from your sky: " .. sky) or "Pick a sky preset under Sky and lighting first.")
+    end
+    -- Speed for Rainbow, Gradient and Sky; 0 holds a gradient still.
+    if style == "Rainbow" or style == "Gradient" or style == "Sky" then
         local speed = math.max(0, math.min(300, tonumber(v.Speed) or 100))
         if has(sec, "SliderInt") then
             local id = "mbg.hpSpeedPct"

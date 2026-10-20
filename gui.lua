@@ -1391,6 +1391,73 @@ local function soundsPage(sec)
     end
 end
 
+-- Profile picture presets (same list as the drawn GUI): Roblox, the RIVALS
+-- developers, the YouTubers with a charm (accounts from the RIVALS wiki's
+-- charm list, checked with Roblox 2026-10-20) and the live Ranked top 20.
+local AVATAR_PRESETS = {
+    {"Roblox", {{"Roblox", 1}, {"builderman", 156}}},
+    {"RIVALS devs", {{"Nosniy", 20349956}, {"SenseiWarrior", 15941965}, {"GreatGuyBoom", 8034104}, {"nekoanims", 780350915}}},
+    {"YouTubers", {
+        {"8sty", 172669397}, {"Applino", 1010680683}, {"atorix", 1212564846}, {"Bandites", 64516}, {"Blizmid", 266340204},
+        {"BobbVX", 301707243}, {"Brian1KB", 1730213868}, {"CarbonMeister", 487532097}, {"Chex", 2528007458}, {"Cruz", 42306452},
+        {"D_reamz", 42477697}, {"Darktru", 121130556}, {"DV", 964088769}, {"elixir", 147139016}, {"enriquebruv", 72777686},
+        {"Hoopie", 264355696}, {"hoppy819", 15315966}, {"Incublox", 4323727470}, {"KaiM", 527669241}, {"Karful", 103070346},
+        {"Kashy", 4378716640}, {"Kaye", 4891355965}, {"Khayri", 19737278}, {"Milo", 6114260623}, {"MiniBloxia", 52392831},
+        {"Mixedify", 152334685}, {"Mud", 324386852}, {"oPixel", 341006533}, {"philhood", 3410760577}, {"RODNY", 317520373},
+        {"ShadowTrojan", 13108868}, {"SharkTactics", 18394211}, {"SlingshotBwai", 719253194}, {"Stefan", 7474730049},
+        {"TanqR", 84743203}, {"viecti", 68729698}, {"WE1RD", 2466113945}}},
+    {"Ranked top 20", "live"},
+}
+-- The lobby's Ranked leaderboard, read at most every 30 s: {name, id}.
+local rankedCache, rankedAt = nil, -100
+local function liveRanked()
+    if rankedCache and tick() - rankedAt < 30 then return rankedCache end
+    rankedAt = tick()
+    local out = {}
+    pcall(function()
+        for _, g in ipairs(game:GetService("Players").LocalPlayer.PlayerGui:GetChildren()) do
+            if g.Name == "LeaderboardGui" then
+                local title
+                for _, d in ipairs(g:GetDescendants()) do if d.Name == "Title" then title = d break end end
+                local okT, t = pcall(function() return title.Text end)
+                if okT and type(t) == "string" and t:lower():find("ranked") then
+                    local rows = {}
+                    for _, d in ipairs(g:GetDescendants()) do
+                        if d.Name == "UserID" then
+                            local okI, id = pcall(function() return d.Text end)
+                            local okR, rank = pcall(function() return d.Parent:FindFirstChild("Rank").Text end)
+                            local okN, name = pcall(function() return d.Parent:FindFirstChild("DisplayName").Text end)
+                            id = okI and tonumber(tostring(id):match("(%d+)"))
+                            rank = okR and tonumber(tostring(rank):match("(%d+)"))
+                            if id and rank and rank <= 20 then rows[#rows + 1] = {rank, okN and name or tostring(id), id} end
+                        end
+                    end
+                    table.sort(rows, function(a, b) return a[1] < b[1] end)
+                    for _, r in ipairs(rows) do out[#out + 1] = {"#" .. r[1] .. " " .. r[2], r[3]} end
+                end
+            end
+        end
+    end)
+    rankedCache = out
+    return out
+end
+
+-- A user's name for the picture line, looked up once in the background.
+local avatarNames = {}
+local function avatarName(id)
+    local key = tostring(id)
+    if avatarNames[key] then return avatarNames[key] end
+    avatarNames[key] = "..."
+    task.spawn(function()
+        local ok, body = pcall(function() return game:HttpGet("https://users.roblox.com/v1/users/" .. key) end)
+        local name = ok and type(body) == "string" and body:match('"name"%s*:%s*"(.-)"')
+        local display = ok and type(body) == "string" and body:match('"displayName"%s*:%s*"(.-)"')
+        avatarNames[key] = name and ("@" .. name .. ((display and display ~= name) and (" (" .. display .. ")") or "")) or "no such user"
+        pcall(refresh)
+    end)
+    return avatarNames[key]
+end
+
 local function spoofPage(sec)
     local v = values("spoof")
     sec:Text("How your name and stats look to you. Empty = real.")
@@ -1425,6 +1492,41 @@ local function spoofPage(sec)
         setMapping("spoof", "Device", DEVICES[i] and DEVICES[i][2] or nil)
     end)
     sec:Text("The device icon is sent to the server (needs Hybrid Mode).")
+    -- Profile card: wins, win rate and picture. Wins and win rate can't be
+    -- longer than the real ones (the card reuses its own letters).
+    sec:Spacing()
+    sec:Text("Profile card (only your own card):")
+    local CARD = {{"Wins", "Casual wins", true}, {"WinRate", "Casual win rate %"}, {"RankedWins", "Ranked wins", true},
+        {"RankedWinRate", "Ranked win rate %"}, {"Avatar", "Picture: user id (their avatar)", true}, {"Picture", "Picture: decal or image id", true}}
+    for _, f in ipairs(CARD) do
+        sec:InputText("mbg.spoof." .. f[1], f[2], v[f[1]] or "", function(text)
+            if type(text) ~= "string" then return end
+            text = trim(text):gsub("%%", "")
+            if text ~= "" and not (f[3] and text:match("^%d+$") or (not f[3] and text:match("^%d+%.?%d*$"))) then return end
+            if text ~= (values("spoof")[f[1]] or "") then setMapping("spoof", f[1], text ~= "" and text or nil) end
+        end)
+    end
+    -- Presets: a group, then a person (sets the user id above).
+    local groups = {}
+    for i, g in ipairs(AVATAR_PRESETS) do groups[i] = g[1] end
+    local gi = state.presetGroup or 1
+    combo(sec, "presetGroup", "Picture presets", groups, gi - 1, function(i) state.presetGroup = i end)
+    local list = AVATAR_PRESETS[gi][2]
+    if list == "live" then list = liveRanked() end
+    local names, index = {"(pick someone)"}, 0
+    for i, p in ipairs(list) do
+        names[#names + 1] = p[1]
+        if tostring(p[2]) == tostring(v.Avatar or "") then index = i end
+    end
+    combo(sec, "presetPerson", "Person", names, index, function(i)
+        local p = list[i - 1]
+        if p then
+            setMapping("spoof", "Avatar", tostring(p[2]))
+            pcall(UI.SetValue, "mbg.spoof.Avatar", tostring(p[2]))
+        end
+    end)
+    local avatarId = tonumber(v.Avatar)
+    if avatarId then sec:Text("Picture of: " .. avatarName(avatarId)) end
     button(sec, "Turn all spoofing off", function()
         for _, f in ipairs(SPOOF_FIELDS) do setMapping("spoof", f.key, nil); pcall(UI.SetValue, "mbg.spoof." .. f.key, "") end
         for _, b in ipairs(SPOOF_BADGES) do setMapping("spoof", b[1], nil) end

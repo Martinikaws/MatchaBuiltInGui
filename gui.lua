@@ -1117,7 +1117,7 @@ local function mark(selected, set) return (selected and "> " or (set and "* " or
 -- the order lists show in: favourites first, then the picked sort.
 local prefs = {file = "rivals_gui_lists.txt", favs = {}, recent = {}, sort = 1, star = false,
     SORTS = {"Default", "A-Z", "Rarity", "Recent", "Favourites only"},
-    RANK = {Common = 1, Rare = 2, Legendary = 3, Mythical = 4, Unique = 5, Genuine = 6}}
+    RANK = {Common = 1, Rare = 2, Legendary = 3, Mythical = 4, Unique = 5, Genuine = 6, Custom = 7}}
 function prefs.load()
     local ok, body = pcall(readfile, prefs.file)
     if not ok or type(body) ~= "string" then return end
@@ -1149,6 +1149,7 @@ function prefs.click(name, pick)
 end
 function prefs.label(name)
     return name .. (prefs.favs[name] and "  (fav)" or "") .. (catalog.new and catalog.new[name] and "  NEW" or "")
+        .. (name:match("^Custom Wrap %d$") and "  [Custom]" or "")
 end
 function prefs.order(list)
     local recentAt, out = {}, {}
@@ -1321,6 +1322,18 @@ local function cosmeticPage(sec, kind, noun)
     search(sec, kind .. "Target")
     prefs.controls(sec)
     button(sec, mark(target == nil) .. "Unchanged", function() setMapping(kind, owned, nil) end)
+    -- Custom wraps built on the Wraps page, listed like any other wrap.
+    if kind == "wraps" then
+        local withCustom = {}
+        for n = 1, 3 do
+            if next(values("customwrap" .. n)) then
+                withCustom[#withCustom + 1] = "Custom Wrap " .. n
+                if catalog.rarity then catalog.rarity["Custom Wrap " .. n] = "Custom" end
+            end
+        end
+        for _, name in ipairs(list) do withCustom[#withCustom + 1] = name end
+        list = withCustom
+    end
     for _, name in ipairs(prefs.order(list)) do
         if name ~= owned and matches(kind .. "Target", name) then
             local picked = target == name or (season ~= nil and name == season)
@@ -1612,6 +1625,49 @@ local function themePage(sec)
     local fn, fat = {}, 0
     for i, t in ipairs(follows) do fn[i] = t[1]; if t[2] == (v.Follow or ""):lower() then fat = i - 1 end end
     combo(sec, "themeFollow", "Follow", fn, fat, function(i) setMapping("theme", "Follow", follows[i][2]) end)
+end
+
+-- Custom wraps ([CustomWrap1..3]): material, colour and transparency for the
+-- 3 parts of a wrap, one pattern, and the owned wraps it replaces.
+local function wrapsPage(sec)
+    sec:Text("Up to 3 wraps of your own. Only you see them. Shows on your next match or when you re-enter an area.")
+    combo(sec, "cwSlot", "Custom wrap", {"Wrap 1", "Wrap 2", "Wrap 3"}, (state.cwSlot or 1) - 1, function(i) state.cwSlot = i end)
+    local key = "customwrap" .. (state.cwSlot or 1)
+    local v = values(key)
+    local mats = {{"Game's", nil}, {"Neon", "Neon"}, {"ForceField", "ForceField"}, {"Glass", "Glass"}, {"Metal", "Metal"}, {"Plastic", "SmoothPlastic"}}
+    local trans = {{"0%", "0"}, {"25%", "0.25"}, {"50%", "0.5"}, {"75%", "0.75"}}
+    for k, part in ipairs({"Main", "Second", "Accent"}) do
+        local names, at = {}, 0
+        for i, m in ipairs(mats) do names[i] = m[1]; if m[2] == v["Material" .. k] then at = i - 1 end end
+        combo(sec, "cwMat" .. k, part .. " material", names, at, function(i) setMapping(key, "Material" .. k, mats[i][2]) end)
+        local cols, cat = {}, 0
+        for i, c in ipairs(TRACER_COLORS) do cols[i] = c[1]; if c[2] == tostring(v["Color" .. k] or ""):lower() then cat = i - 1 end end
+        combo(sec, "cwCol" .. k, part .. " colour", cols, cat, function(i) setMapping(key, "Color" .. k, TRACER_COLORS[i][2]) end)
+        local tn, tat = {}, 0
+        for i, t in ipairs(trans) do tn[i] = t[1]; if tonumber(t[2]) == tonumber(v["Transparency" .. k]) then tat = i - 1 end end
+        combo(sec, "cwTr" .. k, part .. " see-through", tn, tat, function(i) setMapping(key, "Transparency" .. k, trans[i][2]) end)
+    end
+    local patterns, pat = {"None"}, 0
+    for i, name in ipairs(catalog.wraps or {}) do patterns[i + 1] = name; if name == v.Pattern then pat = i end end
+    combo(sec, "cwPattern", "Pattern (from any wrap)", patterns, pat, function(i) setMapping(key, "Pattern", i > 1 and patterns[i] or nil) end)
+    local on, list = {}, {}
+    for name in tostring(v.Replace or ""):gmatch("[^,]+") do
+        name = trim(name)
+        if name ~= "" then on[name] = true; list[#list + 1] = name end
+    end
+    sec:Text("Replaces these wraps of yours (click to add or remove):")
+    for _, name in ipairs(catalog.wraps or {}) do
+        if on[name] or not ownedOnly() or owns(name) then
+            button(sec, mark(on[name], false) .. name, function()
+                if on[name] then
+                    for i = #list, 1, -1 do if list[i] == name then table.remove(list, i) end end
+                else
+                    list[#list + 1] = name
+                end
+                setMapping(key, "Replace", #list > 0 and table.concat(list, ",") or nil)
+            end)
+        end
+    end
 end
 
 local function buttonsPage(sec)
@@ -2069,10 +2125,10 @@ drawTab = function(tab)
     if extra == 1 then skyPage(extras)
     elseif extra == 2 then
         -- Misc holds the smaller features, picked with a second dropdown.
-        combo(extras, "miscView", "Misc", {"Tracers", "Hands", "Spoof", "Health bar", "Buttons", "Theme"}, (state.miscView or 1) - 1, function(i) state.miscView = i end)
+        combo(extras, "miscView", "Misc", {"Tracers", "Hands", "Spoof", "Health bar", "Buttons", "Theme", "Wraps"}, (state.miscView or 1) - 1, function(i) state.miscView = i end)
         local misc = state.miscView or 1
         if misc == 1 then tracersPage(extras) elseif misc == 2 then handsPage(extras)
-        elseif misc == 3 then spoofPage(extras) elseif misc == 4 then healthBarPage(extras) elseif misc == 5 then buttonsPage(extras) else themePage(extras) end
+        elseif misc == 3 then spoofPage(extras) elseif misc == 4 then healthBarPage(extras) elseif misc == 5 then buttonsPage(extras) elseif misc == 6 then themePage(extras) else wrapsPage(extras) end
     else soundsPage(extras) end
 
     local about = tab:Section("About", "Right")

@@ -462,6 +462,26 @@ local function saveConfig()
 end
 
 -- Settings: auto-apply is shared with the drawn GUI (same file, same key).
+-- Crash trail: every step goes straight to a file, so when Matcha itself dies
+-- (nothing else records why) the last lines say what was running. It keeps
+-- the last 300 lines across joins and restarts. Nothing is sent anywhere.
+if type(_G.__RSC_CRUMB) ~= "function" then
+    _G.__RSC_CRUMB = function(step)
+        pcall(function()
+            local file = "rivals_crash_trail.txt"
+            local okR, body = pcall(readfile, file)
+            local lines = {}
+            if okR and type(body) == "string" then
+                for line in body:gmatch("[^\n]+") do lines[#lines + 1] = line end
+            end
+            local okT, stamp = pcall(os.date, "%m-%d %H:%M:%S")
+            lines[#lines + 1] = (okT and stamp or "?") .. "  " .. tostring(game.JobId):sub(1, 8) .. "  " .. tostring(step):sub(1, 150)
+            local from = math.max(1, #lines - 299)
+            writefile(file, table.concat(lines, "\n", from) .. "\n")
+        end)
+    end
+end
+_G.__RSC_CRUMB("menu GUI: start")
 local function loadSettings()
     local okRead, body = pcall(readfile, SETTINGS)
     local auto
@@ -785,7 +805,9 @@ local function loadCatalog()
     end)
     out.guns = sortedNames(guns)
     -- Skins straight from the game that the site doesn't list yet.
+    _G.__RSC_CRUMB("menu GUI: reading the game's items")
     local okGame, gameItems = pcall(catalog.readGame)
+    _G.__RSC_CRUMB("menu GUI: game items read")
     gameItems = okGame and gameItems or {}
     local known = {}
     for _, w in pairs(byName) do for _, skin in ipairs(w.skins) do known[w.name .. "/" .. skin] = true end end

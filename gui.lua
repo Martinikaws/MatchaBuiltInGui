@@ -918,12 +918,20 @@ local function apply(panic)
     _G.__RSC_NOTIFY_STYLE = ({"both", "matcha", "roblox"})[state.notifyStyle or 1] or "both"
     _G.__RSC_PROGRESS = {0, "Starting"}
     _G.__RSC_CONFIG_OVERRIDE = panic and "-- panic" or nil
-    -- Quick apply when only non-skin sections changed since the last apply in
-    -- this server (and safe mode is the same).
     local applying = state.readable and configText() or nil
-    _G.__RSC_QUICK = (not panic and state.appliedKey == context.key and state.appliedSafe == state.safeMode
-        and history.quickable(state.appliedText, applying)) or nil
-    if _G.__RSC_QUICK then state.status = "Applying (quick: skins kept)..." end
+    -- Incremental apply (adapted from the WilliamO2025 fork): when the engine
+    -- already ran in this server, it applies only what changed since then.
+    local previous = _G.__RIVALS_SKIN_CHANGER_STATE
+    if previous and previous.wfAddr == context.wf and previous.jobId == game.JobId
+        and previous.deltaVersion == "4.1" and type(previous.applyChanges) == "function" then
+        _G.__RSC_CONFIG_OVERRIDE, _G.__RSC_QUICK = nil, nil
+        local ok, message = pcall(previous.applyChanges, panic and "-- panic" or applying)
+        assert(ok, message)
+        _G.__RSC_PROGRESS = {100, "Done"}
+        _G.__RivalsGuiAutoApplied = context.key
+        state.status = panic and "Game look restored. Save & Apply brings your changes back." or tostring(message or "Changes applied.")
+        return
+    end
     local source, from = changerSource()
     local fn, err = loadstring(source)
     assert(type(fn) == "function", err or "Could not compile the changer.")

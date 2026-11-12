@@ -542,7 +542,7 @@ local function modFields(ms)
         if okP and p and p > 0x10000 and p < 0x7fffffffffff then
             for b = 0, 3 do
                 local okB, v = pcall(memory_read, "byte", p + b)
-                if okB and v == 10 then return pair[1], pair[2] end
+                if okB and (v == 10 or v == 9) then return pair[1], pair[2] end
             end
         end
     end
@@ -559,6 +559,11 @@ do
     -- Finds tt, globalState, registry, lsizenode, array and node pointers
     -- dynamically at runtime across Roblox updates, falling back to known builds.
     local TAG_STRING, TAG_TABLE, TAG_THREAD = 6, 7, 10
+    -- Roblox build 4ea8e85 (Nov 2026) numbers Luau's types one lower
+    -- (thread 9, table 6, string 5): set from the thread tag in use.
+    local function useTags(threadTag)
+        if threadTag then TAG_THREAD, TAG_TABLE, TAG_STRING = threadTag, threadTag - 3, threadTag - 4 end
+    end
     -- Known builds: 02c37bc (type byte +1) and cec3ad5 (type byte +0).
     local KNOWN = {[2] = {tt = 2, globalState = 0x78, registry = 0x618, lsize = 6, sizearray = 8, array = 0x18, node = 0x20},
         [1] = {tt = 1, globalState = 0x38, registry = 0x618, lsize = 4, sizearray = 8, array = 0x28, node = 0x18}, -- build 5a21b87
@@ -572,7 +577,9 @@ do
         local slot = ms and ms.Address and rint(ms.Address + modSlotOff(ms))
         if not thread or thread < 0x10000 or not slot or slot < 1 then return nil end
         local tt
-        for b = 0, 3 do if rbyte(thread + b) == TAG_THREAD then tt = b break end end
+        for _, tag in ipairs({10, 9}) do
+            for b = 0, 3 do if not tt and rbyte(thread + b) == tag then tt = b; useTags(tag) end end
+        end
         if not tt then return nil end
 
         local function arrayOf(reg)
@@ -614,7 +621,7 @@ do
                             for i = 0, count - 1 do
                                 local n = base + i * 32
                                 local kp = rd(n + 16)
-                                if (rint(n + 28) or 0) % 16 == 6 and kp and kp > 0x10000 then
+                                if (rint(n + 28) or 0) % 16 == TAG_STRING and kp and kp > 0x10000 then
                                     local ok, k = pcall(mrd, "string", kp + 24)
                                     if ok and type(k) == "string" and #k > 0 and #k < 64 then keys = keys + 1 end
                                 end
@@ -668,6 +675,7 @@ do
         local shared = _G.__RSC_LAYOUT
         if shared and shared.array then
             L = shared
+            useTags(shared.tagThread)
         else
             local detected = detectLayout(ms)
             if detected then L = detected end
@@ -890,8 +898,10 @@ local function currentContext()
     return ok and result or nil
 end
 local function upstreamBusy()
-    local stamp = _G.__RIVALS_SKIN_CHANGER_BUSY
-    return type(stamp) == "number" and tick() - stamp < 180
+    -- Only a run in this server counts: Matcha keeps _G across teleports, and
+    -- a run cut off by one never clears its stamp.
+    local stamp, job = _G.__RIVALS_SKIN_CHANGER_BUSY, _G.__RIVALS_SKIN_CHANGER_BUSY_JOB
+    return type(stamp) == "number" and tick() - stamp < 180 and (job == nil or job == game.JobId)
 end
 -- The local copy first: that is the one autoexec runs.
 local function changerSource()
@@ -1415,8 +1425,46 @@ local function skyPage(sec)
     search(sec, "sky")
     local function setSky(value)
         -- Per-face ids from the site would win over the preset; drop them.
-        for _, k in ipairs({"All", "BK", "DN", "FT", "LF", "RT", "UP"}) do setMapping("skybox", k, nil) end
+        for _, k in ipairs({"All", "BK", "DN", "FT", "LF", "RT", "UP", "Force"}) do setMapping("skybox", k, nil) end
         setMapping("skybox", "Preset", value)
+    end
+    -- Advanced: your own Roblox image ids, one for all six faces or one per
+    -- face. The changer only writes images from its own skies unless Force=yes:
+    -- an image the game can't load crashes Roblox on the next map load.
+    combo(sec, "skyAdvanced", "Advanced: your own image ids", {"Hidden", "Shown"}, state.skyAdvanced and 1 or 0, function(i) state.skyAdvanced = i == 2 end)
+    if state.skyAdvanced then
+        local sv = values("skybox")
+        local function now(k) for key, val in pairs(sv) do if key:upper() == k then return val end end return "" end
+        for _, f in ipairs({{"ALL", "All six faces"}, {"FT", "Front"}, {"BK", "Back"}, {"LF", "Left"}, {"RT", "Right"}, {"UP", "Up"}, {"DN", "Down"}}) do
+            local key = "skyid" .. f[1]
+            if state.typed[key] == nil then state.typed[key] = now(f[1]) end
+            sec:InputText("mbg.skyid." .. f[1], f[2], state.typed[key], function(text)
+                if type(text) == "string" then state.typed[key] = text end
+            end)
+        end
+        local force = tostring(now("FORCE")):lower()
+        force = force == "yes" or force == "true" or force == "on"
+        combo(sec, "skyForce", "Safety check", {"Changer's skies only", "Force (can crash on a bad image)"}, (state.skyForce == nil and force or state.skyForce) and 1 or 0, function(i) state.skyForce = i == 2 end)
+        button(sec, "Use these ids", function()
+            local ids, bad, any = {}, false, false
+            for _, k in ipairs({"ALL", "FT", "BK", "LF", "RT", "UP", "DN"}) do
+                local rawId = trim(state.typed["skyid" .. k] or "")
+                ids[k] = rawId:match("^(%d+)$")
+                if rawId ~= "" and not ids[k] then bad = true end
+                if ids[k] then any = true end
+            end
+            if bad then state.status = "Use only the image's number, like 10196550367." return end
+            if not any then state.status = "Type an image id first." return end
+            for _, k in ipairs({"Preset", "All", "BK", "DN", "FT", "LF", "RT", "UP", "Force"}) do setMapping("skybox", k, nil) end
+            if ids.ALL then setMapping("skybox", "All", ids.ALL) end
+            for _, k in ipairs({"FT", "BK", "LF", "RT", "UP", "DN"}) do if ids[k] then setMapping("skybox", k, ids[k]) end end
+            local wantForce = state.skyForce
+            if wantForce == nil then wantForce = force end
+            if wantForce then setMapping("skybox", "Force", "yes") end
+            state.status = "Sky set - apply, then it shows on the next map load."
+        end)
+        sec:Text("The number in the image's link. Private or new uploads can't be")
+        sec:Text("loaded by the game: with Force they crash Roblox on a map load.")
     end
     button(sec, mark(skyNow == "") .. "Off (the game's sky)", function() setSky(nil) end)
     for _, s in ipairs(#catalog.skies > 0 and catalog.skies or SKIES) do
@@ -2155,10 +2203,21 @@ drawTab = function(tab)
     if extra == 1 then skyPage(extras)
     elseif extra == 2 then
         -- Misc holds the smaller features, picked with a second dropdown.
-        combo(extras, "miscView", "Misc", {"Tracers", "Hands", "Spoof", "Health bar", "Buttons", "Theme", "Wraps"}, (state.miscView or 1) - 1, function(i) state.miscView = i end)
+        combo(extras, "miscView", "Misc", {"Tracers", "Hands", "Spoof", "Health bar", "Buttons", "Theme", "Wraps", "Scope"}, (state.miscView or 1) - 1, function(i) state.miscView = i end)
         local misc = state.miscView or 1
         if misc == 1 then tracersPage(extras) elseif misc == 2 then handsPage(extras)
-        elseif misc == 3 then spoofPage(extras) elseif misc == 4 then healthBarPage(extras) elseif misc == 5 then buttonsPage(extras) elseif misc == 6 then themePage(extras) else wrapsPage(extras) end
+        elseif misc == 3 then spoofPage(extras) elseif misc == 4 then healthBarPage(extras) elseif misc == 5 then buttonsPage(extras) elseif misc == 6 then themePage(extras) elseif misc == 7 then wrapsPage(extras)
+        else
+            -- Scope shading, saved as [Scope] Clear=on.
+            local on = tostring(values("scope").Clear or ""):lower()
+            on = on == "on" or on == "true" or on == "yes" or on == "1"
+            combo(extras, "scopeClear", "Scope shading", {"Game's scope", "No shading"}, on and 1 or 0, function(i)
+                if (i == 2) ~= on then setMapping("scope", "Clear", i == 2 and "on" or nil) end
+            end)
+            extras:Text("Removes the dark vignette and black ring when you scope in")
+            extras:Text("with the Sniper, Crossbow and their skins. The reticle stays.")
+            extras:Text("Only you see it. Shows on your next scope-in after applying.")
+        end
     else soundsPage(extras) end
 
     local about = tab:Section("About", "Right")

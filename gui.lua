@@ -1518,7 +1518,7 @@ local function tracersPage(sec)
         local speed = snapSpeed(t.Speed)
         local id = "mbg.tracerSpeedPct"
         follow(id, speed, function(shown) return snapSpeed(shown) == speed end)
-        sec:SliderInt(id, "Speed % (every gun)", 5, 300, speed, function(v)
+        sec:SliderInt(id, "Speed % (default for every gun)", 5, 300, speed, function(v)
             local s = snapSpeed(v)
             if s ~= snapSpeed(values("tracers").Speed) then
                 setMapping("tracers", "Speed", s ~= 100 and tostring(s) or nil)
@@ -1532,11 +1532,15 @@ local function tracersPage(sec)
         local speedNames = {}
         for i, s in ipairs(TRACER_SPEEDS) do speedNames[i] = s[1] end
         if speedNow and si == 1 then speedNames[#speedNames + 1] = speedNow .. "% (from the site)"; si = #speedNames end
-        combo(sec, "tracerSpeed", "Speed (every gun)", speedNames, si - 1, function(i)
+        combo(sec, "tracerSpeed", "Speed (default for every gun)", speedNames, si - 1, function(i)
             local s = TRACER_SPEEDS[i]
             if s then setMapping("tracers", "Speed", s[2]) end
         end)
     end
+    local ktOn = tostring(t.KeyperTracer or ""):lower() == "true"
+    combo(sec, "keyperTracer", "Keyper tracer (match wrap when Keyper is equipped)", {"Off", "On"}, ktOn and 1 or 0, function(i)
+        setMapping("tracers", "KeyperTracer", i == 2 and "true" or nil)
+    end)
     -- The game draws no tracers for the Energy Pistols; this turns them on.
     local epOn = tostring(t.EnergyPistolsTracers or ""):lower() == "true"
     combo(sec, "epTracers", "Energy Pistols tracers (not recommended with 50% speed or under)", {"Off", "On"}, epOn and 1 or 0, function(i)
@@ -1555,6 +1559,22 @@ local function tracersPage(sec)
     local now = t[target] and tostring(t[target]):lower()
     button(sec, "< All guns", function() state.tracerFor = nil end)
     sec:Text((target == "Color" and "Every gun" or target) .. "  -  now: " .. (now or (target == "Color" and "the game's own" or "same as all guns")))
+    if target ~= "Color" then
+        -- This gun's own speed; the first option clears it so the gun follows the global one.
+        local key = target .. " Speed"
+        local gunNow = t[key] and tostring(t[key]) or nil
+        local opts = {{"Same as every gun", nil}, {"Game's own (100%)", "100"}}
+        for i = 2, #TRACER_SPEEDS do opts[#opts + 1] = TRACER_SPEEDS[i] end
+        local gi = 1
+        for i, o in ipairs(opts) do if o[2] == gunNow then gi = i end end
+        local names = {}
+        for i, o in ipairs(opts) do names[i] = o[1] end
+        if gunNow and gi == 1 then names[#names + 1] = gunNow .. "% (from the site)"; gi = #names end
+        combo(sec, "tracerGunSpeed." .. target, "Speed for " .. target, names, gi - 1, function(i)
+            local o = opts[i]
+            if o then setMapping("tracers", key, o[2]) end
+        end)
+    end
     button(sec, mark(now == nil) .. (target == "Color" and "The game's own" or "Same as all guns"), function() setMapping("tracers", target, nil) end)
     button(sec, mark(now == "rainbow") .. "Rainbow", function() setMapping("tracers", target, "rainbow") end)
     button(sec, mark(now == "sky") .. "Match sky (your sky preset's colour)", function() setMapping("tracers", target, "sky") end)
